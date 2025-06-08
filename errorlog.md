@@ -88,9 +88,46 @@ ERROR {
 ```
 
 ### 原因
-1. **npxコマンドが利用できない**: Lambda Layer内にnpmツールチェインが含まれていない
-2. **子プロセス制約**: Lambdaの実行環境では子プロセスの制限がある
+
+1. **npxコマンドが利用できない詳細理由**
+   - **npmツールチェインの不在**: Lambda Layer（`/opt/nodejs/`）にはnpmパッケージの実行ファイルのみが含まれ、npm/npx等のツールチェインは含まれない
+   - **Lambda実行環境の制約**: Lambda関数の実行環境（`/var/task/`）には最小限のNode.jsランタイムのみが提供される
+   - **npxの仕組み**: npxは通常、ローカルの`node_modules/.bin/`やグローバルインストールされたツールを実行するが、Lambda環境にはこれらが存在しない
+   - **パス解決の問題**: npxが依存するPATH環境変数やnode_modules解決機構がLambda環境では制限されている
+
+2. **子プロセス制約の詳細**
+   - **実行権限**: Lambda環境では子プロセスの実行に制限があり、外部コマンドの実行が不安定
+   - **環境変数の継承**: 子プロセスへの環境変数継承が期待通りに動作しない場合がある
+   - **プロセス管理**: Lambda関数の短いライフサイクル内で子プロセスを適切に管理することが困難
+
 3. **パッケージ不足**: `@modelcontextprotocol/server-brave-search`がLambda Layerに含まれていない
+
+### なぜnodeコマンドで代替したか
+
+1. **直接実行の確実性**
+   - `node`コマンドはLambdaランタイムに標準で含まれているため、確実に利用可能
+   - パッケージマネージャーに依存せず、直接JavaScriptファイルを実行
+
+2. **明示的なパス指定**
+   ```typescript
+   // 問題のあった方法（npx使用）
+   command: "npx",
+   args: ["@modelcontextprotocol/server-brave-search"]
+   
+   // 解決方法（node直接実行）
+   command: "node",
+   args: ["/opt/nodejs/node_modules/@modelcontextprotocol/server-brave-search/dist/index.js"]
+   ```
+   - Lambda Layer内の正確なパス（`/opt/nodejs/node_modules/`）を明示的に指定
+   - パッケージ解決の曖昧性を排除
+
+3. **依存関係の制御**
+   - Lambda Layerに事前にパッケージをインストールすることで、実行時の依存関係解決を回避
+   - npxのようなパッケージマネージャーの動的解決に依存しない静的な構成
+
+4. **デバッグの容易性**
+   - エラー時にパスやファイルの存在確認が容易
+   - npxの内部処理に起因する問題を排除し、シンプルな実行フローを実現
 
 ### 解決方法
 Lambda LayerにMCPサーバーを追加し、直接実行：
