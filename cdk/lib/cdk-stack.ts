@@ -33,24 +33,27 @@ export class CdkStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
-    // Lambda Layer（後で作成）
+    // Lambda Layer
     const dependenciesLayer = new lambda.LayerVersion(this, 'MastraDependenciesLayer', {
       code: lambda.Code.fromAsset('./layer'),
       compatibleRuntimes: [lambda.Runtime.NODEJS_22_X],
-      description: '@mastra/core and @ai-sdk/amazon-bedrock dependencies',
+      description: 'mastra, ai-sdk, mcp dependencies',
     });
 
     // Lambda関数
     const mastraLambda = new lambda.Function(this, 'MastraLambda', {
       runtime: lambda.Runtime.NODEJS_22_X,
       handler: 'index.handler',
-      code: lambda.Code.fromAsset('../lambda'),
+      code: lambda.Code.fromAsset('../dist', {
+        exclude: ['layer.zip', 'handler.zip', 'layer/**']
+      }),
       role: lambdaRole,
       layers: [dependenciesLayer],
-      timeout: cdk.Duration.seconds(30),
-      memorySize: 512,
+      timeout: cdk.Duration.seconds(300),
+      memorySize: 1024,
       environment: {
         NODE_ENV: 'production',
+        BRAVE_API_KEY: 'put-your-brave-api-key',
       },
       logGroup: logGroup,
     });

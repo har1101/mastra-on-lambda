@@ -7,7 +7,9 @@ AWS Lambda関数として動作するMastraエージェントのプロジェク�
 ```
 mastra-on-lambda/
 ├── lambda/
-│   └── index.ts         # Lambda関数のハンドラー
+│   └── index.ts         # Lambda関数のソースコード
+├── dist/                # ビルド成果物（自動生成）
+│   └── index.mjs        # esbuildでバンドル済みLambda関数
 ├── package.json         # プロジェクトの依存関係
 ├── tsconfig.json        # TypeScriptの設定
 └── cdk/                 # AWS CDKプロジェクト
@@ -18,10 +20,38 @@ mastra-on-lambda/
             └── package.json
 ```
 
+### ディレクトリの役割
+
+1. **`/lambda/`**
+   - TypeScriptソースコードの格納場所
+   - 開発時にコードを編集する場所
+
+2. **`/dist/`（ビルド時に自動生成）**
+   - esbuildによるビルド成果物の出力先
+   - `index.mjs`: ES Module形式にトランスパイルされたLambda関数
+   - CDKはここからLambda関数コードをデプロイ
+
+3. **`/cdk/layer/nodejs/`**
+   - Lambda Layerの依存関係を格納
+   - `@mastra/core`, `@mastra/mcp`, `@ai-sdk/amazon-bedrock`などを含む
+   - CDKが自動的にLayerとしてパッケージング
+
+### ビルドとデプロイのフロー
+
+```
+開発時:
+/lambda/index.ts → [esbuild] → /dist/index.mjs
+
+デプロイ時:
+/dist/index.mjs → Lambda関数本体
+/cdk/layer/nodejs/ → Lambda Layer（依存関係）
+```
+
 ## 機能
 
 - **Lambda関数**: Mastraエージェントを実行し、AIエージェントに関する質問に日本語で回答
-- **Lambda Layer**: `@mastra/core`と`@ai-sdk/amazon-bedrock`の依存関係を含む
+- **MCP統合**: Brave Search MCPサーバーを使用してWeb検索機能を提供
+- **Lambda Layer**: `@mastra/core`、`@mastra/mcp`、`@ai-sdk/amazon-bedrock`、`@modelcontextprotocol/server-brave-search`の依存関係を含む
 - **実行ロール**: Lambda基本実行権限とBedrock Full Accessを持つIAMロール
 - **CloudWatch Logs**: ログ保持期間1週間で自動設定
 
@@ -39,12 +69,11 @@ mastra-on-lambda/
    npm install
    ```
 
-2. **Lambda関数のTypeScriptをコンパイル**
+2. **Lambda関数をビルド**
    ```bash
-   cd lambda
-   npx tsc
-   cd ..
+   npm run build
    ```
+   これにより`dist/index.mjs`（ES Module形式のLambda関数）が生成されます。
 
 3. **CDKディレクトリに移動**
    ```bash
@@ -71,6 +100,11 @@ mastra-on-lambda/
    cdk deploy
    ```
 
+8. **Brave Search API Keyを設定（デプロイ後）**
+   AWSコンソールでLambda関数の環境変数を設定：
+   - キー: `BRAVE_API_KEY`
+   - 値: https://api.search.brave.com/ で取得したAPIキー
+
 ## 動作確認
 
 デプロイ後、AWSコンソールまたはAWS CLIでLambda関数を実行できます。
@@ -85,12 +119,12 @@ aws lambda invoke \
 cat response.json
 ```
 
-### カスタム質問で実行
+### カスタム質問で実行（Web検索機能を使用）
 ```bash
 aws lambda invoke \
   --function-name MastraLambda \
   --cli-binary-format raw-in-base64-out \
-  --payload '{"question": "Mastraフレームワークについて教えて"}' \
+  --payload '{"question": "2024年のAI技術のトレンドについて教えて"}' \
   response.json
 
 cat response.json
@@ -100,23 +134,26 @@ cat response.json
 
 ```bash
 cd cdk
-npx cdk destroy
+cdk destroy
 ```
 
 ## 注意事項
 
-- Lambda関数のタイムアウトは30秒、メモリは512MBに設定
+- Lambda関数のタイムアウトは300秒、メモリは1024MBに設定
 - Bedrock利用にはリージョンとモデルのアクセス権限が必要
-- Lambda Layerの更新時は`layer/nodejs`内で`npm install`を再実行してください
+- **Brave Search機能を使用する場合**: デプロイ後にAWSコンソールで`BRAVE_API_KEY`環境変数を設定する必要があります
+- MCPサーバーがLambda Layer内で実行されるため、初回実行時に少し時間がかかる場合があります
+- Lambda Layerの更新時は`cdk/layer/nodejs`内で`npm install`を再実行してください
+- TypeScriptの型チェックとesbuildのビルドターゲットは両方ES2022に設定されています
 
 ## 開発時の注意
 
 ### Lambda関数の更新
 Lambda関数のコード（`lambda/index.ts`）を変更した場合：
 ```bash
-cd lambda
-npx tsc
-cd ../cdk
+# プロジェクトルートで
+npm run build
+cd cdk
 cdk deploy
 ```
 
@@ -133,6 +170,6 @@ cdk deploy
 インフラ構成（`cdk/lib/cdk-stack.ts`）を変更した場合：
 ```bash
 cd cdk
-npm run build
+(cdk synth)
 cdk deploy
 ```

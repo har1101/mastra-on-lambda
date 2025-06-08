@@ -2,6 +2,7 @@
     "name": "mastra-on-lambda",
     "version": "0.1.0",
     "private": true,
+    "type": "module",
     "devDependencies": {
         "@types/aws-lambda": "^8.10.149",
         "@types/node": "^22.15.29",
@@ -11,13 +12,12 @@
     },
     "scripts": {
         "prebuild": "rm -rf dist",
-        "build": "npm run build:layer && npm run build:handler",
-        "build:layer": "mkdir -p dist/layer/nodejs && cp package.json dist/layer/nodejs/ && cp package-lock.json dist/layer/nodejs/ && cd dist/layer/nodejs && npm ci --omit=dev && cd .. && zip -r ../layer.zip nodejs/",
-        "build:handler": "esbuild index.ts --bundle --minify --sourcemap --platform=node --target=es2020 --external:@mastra/core --external:@ai-sdk/amazon-bedrock --outfile=dist/index.js && cd dist && zip handler.zip index.js*",
-        "postbuild": "echo 'Build completed: dist/layer.zip and dist/handler.zip created'"
+        "build": "esbuild lambda/index.ts --bundle --minify --sourcemap --platform=node --target=es2022 --format=esm --external:@mastra/core --external:@ai-sdk/amazon-bedrock --external:@mastra/mcp --outfile=dist/index.mjs"
     },
     "dependencies": {
-        "@ai-sdk/amazon-bedrock": "^2.2.9",
-        "@mastra/core": "^0.10.1"
+        "@ai-sdk/amazon-bedrock": "^2.2.10",
+        "@mastra/core": "^0.10.3",
+        "@mastra/mcp": "^0.10.2",
+        "@modelcontextprotocol/server-brave-search": "^0.6.2"
     }
 }
